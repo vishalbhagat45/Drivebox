@@ -1,0 +1,20 @@
+import 'dotenv/config';
+export const env = {
+  PORT: Number(process.env.PORT || 5000),
+  NODE_ENV: process.env.NODE_ENV || 'development',
+  CORS_ORIGIN: process.env.CORS_ORIGIN || '*',
+  DATABASE_URL: process.env.DATABASE_URL!,
+  JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET!,
+  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET!,
+  JWT_ACCESS_TTL: process.env.JWT_ACCESS_TTL || '15m',
+  JWT_REFRESH_TTL: process.env.JWT_REFRESH_TTL || '7d',
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
+  OAUTH_CALLBACK_URL: process.env.OAUTH_CALLBACK_URL || '',
+  AWS_REGION: process.env.AWS_REGION || 'ap-south-1',
+  AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID || '',
+  AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || '',
+  S3_BUCKET: process.env.S3_BUCKET || '',
+  S3_PUBLIC_BASE: process.env.S3_PUBLIC_BASE || '',
+  MAX_UPLOAD_MB: Number(process.env.MAX_UPLOAD_MB || 100),
+};
