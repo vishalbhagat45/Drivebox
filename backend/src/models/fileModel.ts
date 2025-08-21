@@ -70,3 +70,20 @@ export async function listFilesPaged(
   return result.rows;
 }
 
+export const moveFile = async (id: number, userId: string, newParentId: number | null) => {
+  const result = await pool.query(
+    `UPDATE files SET folder_id=$1, updated_at=NOW() 
+     WHERE id=$2 AND user_id=$3 RETURNING *`,
+    [newParentId, id, userId]
+  );
+  return result.rows[0];
+};
+
+export const starFile = async (id: number, userId: string, starred: boolean) => {
+  const result = await pool.query(
+    `UPDATE files SET starred=$1, updated_at=NOW() WHERE id=$2 AND user_id=$3 RETURNING *`,
+    [starred, id, userId]
+  );
+  return result.rows[0];
+};
+

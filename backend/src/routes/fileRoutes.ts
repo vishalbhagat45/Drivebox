@@ -12,7 +12,8 @@ import {
   searchFiles,
   autocompleteFiles,
   recentFiles,
-  getFilesPaged
+  getFilesPaged,
+  starFile
 } from "../controllers/fileController";
 import { protect } from "../middleware/authMiddleware";
 
@@ -31,5 +32,7 @@ router.get("/search", protect, searchFiles);
 router.get("/autocomplete", protect, autocompleteFiles);
 router.get("/recent", protect, recentFiles);
 router.get("/file",protect,getFilesPaged);
+router.put("/:id/star", protect, starFile);
+
 
 export default router;

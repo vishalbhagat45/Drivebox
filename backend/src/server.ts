@@ -15,7 +15,10 @@ dotenv.config();
 const app = express();
 
 // --- Core middleware ---
-app.use(cors());                  // add options here if you need specific origins
+app.use(cors({
+  origin: "http://localhost:5173",   // frontend URL
+  credentials: true                  // allow cookies / credentials
+}));                 // add options here if you need specific origins
 app.use(express.json());
 
 // --- Sessions (required for Passport OAuth) ---

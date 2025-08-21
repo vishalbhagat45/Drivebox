@@ -315,3 +315,39 @@ export const getFilesPaged = async (req: Request, res: Response) => {
     res.status(500).json({ error: "Error fetching files" });
   }
 };
+
+export const moveFile = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { newParentId } = req.body;
+    const userId = (req as any).user.id;
+
+    const perm = await pool.query(
+      "SELECT role FROM permissions WHERE file_id=$1 AND user_id=$2",
+      [id, userId]
+    );
+    if (!perm.rows.length || perm.rows[0].role === "viewer") {
+      return res.status(403).json({ msg: "No permission to move" });
+    }
+
+    const updated = await fileModel.moveFile(Number(id), userId, newParentId ? Number(newParentId) : null);
+    res.json({ message: "File moved", file: updated });
+  } catch (err) {
+    console.error("Error moving file:", err);
+    res.status(500).json({ error: "Error moving file" });
+  }
+};
+
+export const starFile = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { starred } = req.body;
+    const userId = (req as any).user.id;
+
+    const updated = await fileModel.starFile(Number(id), userId, starred);
+    res.json({ message: starred ? "File starred" : "File unstarred", file: updated });
+  } catch (err) {
+    console.error("Error starring file:", err);
+    res.status(500).json({ error: "Error starring file" });
+  }
+};
