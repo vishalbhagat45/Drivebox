@@ -1,4 +1,58 @@
 # DriveBox
 
-DriveBox is a cloud-based file management system similar to Google Drive, built with React.js for the frontend, Node.js and Express.js for the backend, PostgreSQL as the database, and Firebase Storage for file handling. It allows users to register, login, upload and manage files and folders with a modern, responsive UI. The application uses JWT for authentication, bcrypt for secure password storage, drag-and-drop file uploads, folder navigation with breadcrumbs, file previews (images, PDFs, text), upload progress notifications, search and filter functionality, and supports dark/light mode with a mobile-friendly interface. To set up, clone the repository and navigate to the backend folder, install dependencies using `npm install`, create a `.env` file with `PORT=5000`, `DATABASE_URL=postgres://<username>:<password>@localhost:5432/drivebox`, `JWT_SECRET=<your_jwt_secret>`, `FIREBASE_PROJECT_ID=<firebase_project_id>`, `FIREBASE_CLIENT_EMAIL=<firebase_client_email>`, and `FIREBASE_PRIVATE_KEY=<firebase_private_key>`, run any required migrations in PostgreSQL, and start the backend server with `npm run dev`. For the frontend, navigate to the frontend folder, install dependencies using `npm install`, create a `.env` file with `VITE_API_URL=http://localhost:5000/api`, and start the development server with `npm run dev` to open the app at `http://localhost:5173`. Firebase setup requires creating a Firebase project, enabling Firebase Storage, generating a service account key from Project Settings → Service Accounts → Generate new private key, adding credentials to the `.env` file, and configuring storage bucket rules to allow authenticated uploads. The folder structure includes `backend/` with controllers, routes, models, config, middleware, and `server.js`, and `frontend/` with `src/components/`, `src/pages/`, `src/context/`, `App.jsx`, `main.jsx`, and `index.css`. Future enhancements include real-time collaboration, file sharing via links, user roles and permissions, advanced search and filters, activity logs, and version history. DriveBox provides secure, efficient, and user-friendly cloud storage functionality in a single platform. The project uses React.js, Tailwind CSS, Axios, react-router-dom on the frontend, Node.js, Express.js on the backend, PostgreSQL for the database, Firebase Storage for file uploads, and JWT + bcrypt for authentication. It also integrates react-toastify for notifications, dotenv for environment management, and CORS for cross-origin requests. Files can be uploaded and managed easily, folders can be navigated with breadcrumbs, and all metadata is stored securely in PostgreSQL while the actual files are stored in Firebase. DriveBox is open-source and licensed under the MIT License, providing a modern cloud storage experience that is fully customizable and extensible.
+DriveBox is a cloud-based file management system similar to Google Drive, designed to allow users to upload, view, and manage files and folders with a modern, responsive interface. The application is built with **React.js** for the frontend, **Node.js + Express.js** for the backend, **PostgreSQL** for database management, and **Firebase Storage** for storing files securely. Authentication is handled using **JWT**, and passwords are securely stored using **bcrypt**.
+
+---
+
+## Features
+
+- User registration and login with JWT-based authentication and secure password storage.
+- "Remember Me" functionality to keep users logged in.
+- Upload files and folders with drag-and-drop support.
+- Folder navigation with breadcrumbs.
+- Preview files such as images, PDFs, and text documents directly in the browser.
+- Upload progress and success/error notifications.
+- Search and filter functionality for files and folders.
+- Responsive UI with dark/light mode support.
+
+---
+
+## Tech Stack
+
+- **Frontend:** React.js, Tailwind CSS, Axios, react-router-dom  
+- **Backend:** Node.js, Express.js  
+- **Database:** PostgreSQL  
+- **File Storage:** Firebase Storage  
+- **Authentication:** JWT, bcrypt  
+- **Others:** react-toastify, dotenv, CORS
+
+---
+
+## Installation & Setup
+
+### Backend
+
+1. Clone the repository:  
+   ```bash
+   git clone <repository_url>
+   cd backend
+2. Install dependencies:
+   ```bash
+   npm install
+3. Create a .env file in the backend root directory:
+   ```bash
+   PORT=5000
+DATABASE_URL=postgres://<username>:<password>@localhost:5432/drivebox
+JWT_SECRET=<your_jwt_secret>
+FIREBASE_PROJECT_ID=<firebase_project_id>
+FIREBASE_CLIENT_EMAIL=<firebase_client_email>
+FIREBASE_PRIVATE_KEY=<firebase_private_key>
+
+4. Run migrations or create tables in PostgreSQL if required.
+5. Start the backend server:
+   ```bash
+   npm run dev
+
+
+
 
