@@ -1,6 +1,6 @@
 // src/controllers/fileController.ts
 import { Request, Response } from "express";
-import { bucket } from "../config/firebase";
+import { bucket } from "../firebase";
 import * as fileModel from "../models/fileModel";
 import { v4 as uuidv4 } from "uuid";
 import pool from "../config/db"; // ✅ needed for custom queries

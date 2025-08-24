@@ -1,42 +1,31 @@
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
-import pool from "../config/db";
+import admin from "../firebase"; // Correct relative path
 
-interface JwtPayload {
-  id: string;
-}
-
-// Extend Express Request to include user
+// Extend Express Request type to include user info
 declare global {
   namespace Express {
     interface Request {
-      user?: { id: string; name?: string; email?: string };
+      user?: { uid: string; email?: string; name?: string };
     }
   }
 }
 
+// Protect routes middleware
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
-  let token;
+  const authHeader = req.headers.authorization;
 
-  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
-    try {
-      token = req.headers.authorization.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
-
-      // Fetch user details from DB
-      const userRes = await pool.query("SELECT id, name, email FROM users WHERE id = $1", [decoded.id]);
-      const user = userRes.rows[0];
-
-      if (!user) {
-        return res.status(401).json({ message: "User not found" });
-      }
-
-      req.user = user;
-      return next();
-    } catch (error) {
-      return res.status(401).json({ message: "Not authorized, token failed" });
-    }
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "Not authorized, no token" });
   }
 
-  return res.status(401).json({ message: "Not authorized, no token" });
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    req.user = { uid: decodedToken.uid, email: decodedToken.email, name: decodedToken.name };
+    next();
+  } catch (err) {
+    console.error("Firebase token verification failed:", err);
+    return res.status(401).json({ message: "Not authorized, token failed" });
+  }
 };

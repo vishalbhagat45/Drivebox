@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebase";  // ✅ import firebase auth
+import { signInWithEmailAndPassword, getAuth } from "firebase/auth";
 
 export default function Login() {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -17,8 +16,14 @@ export default function Login() {
     setError("");
 
     try {
-      await signInWithEmailAndPassword(auth, form.email, form.password);
-      navigate("/dashboard"); // ✅ redirect after login
+      const auth = getAuth();
+      const userCredential = await signInWithEmailAndPassword(auth, form.email, form.password);
+      
+      // ✅ Store Firebase ID token in localStorage
+      const token = await userCredential.user.getIdToken();
+      localStorage.setItem("fbToken", token);
+
+      navigate("/dashboard");
     } catch (err) {
       setError(err.message);
     }

@@ -18,12 +18,12 @@ import {
   Grid,
   Settings,
 } from "lucide-react";
-import { db } from "../firebase"; // ✅ import Firestore
+import { db } from "../firebase"; 
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 
 import FileUpload from "../components/FileUpload";
 import FilePreview from "../components/FilePreview";
-import FileExplorer from "../components/FileExplorer";
+// import FileExplorer from "../components/FileExplorer";
 
 const Dashboard = () => {
   const [files, setFiles] = useState([]);
@@ -34,7 +34,6 @@ const Dashboard = () => {
   const [previewFile, setPreviewFile] = useState(null);
   const [shareFile, setShareFile] = useState(null);
 
-  // ✅ Fetch files from Firestore
   useEffect(() => {
     const fetchFiles = async () => {
       try {
@@ -89,18 +88,12 @@ const Dashboard = () => {
             <button className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
               <Folder size={18} /> My Drive
             </button>
-            <FileExplorer />
-            <button className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-              <Monitor size={18} /> Computers
-            </button>
+            {/* <FileExplorer /> */}
             <button className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
               <Users size={18} /> Shared with me
             </button>
             <button className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
               <Clock size={18} /> Recent
-            </button>
-            <button className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-              <Star size={18} /> Starred
             </button>
             <button className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
               <ShieldAlert size={18} /> Spam
@@ -116,11 +109,11 @@ const Dashboard = () => {
           <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full mb-2">
             <div
               className="h-2 bg-blue-600 rounded-full"
-              style={{ width: "45%" }}
+              style={{ width: "0%" }}
             ></div>
           </div>
           <p className="text-xs text-gray-600 dark:text-gray-300 mb-2">
-            7.03 GB of 15 GB used
+            0 GB of 15 GB used
           </p>
           <button className="text-sm text-blue-600 hover:underline">
             Get more storage

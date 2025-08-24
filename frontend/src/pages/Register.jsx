@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { auth } from "../firebase";  // ✅ import firebase auth
+import { createUserWithEmailAndPassword, updateProfile, getAuth } from "firebase/auth";
 
 export default function Register() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
@@ -17,18 +16,20 @@ export default function Register() {
     setError("");
 
     try {
+      const auth = getAuth();
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         form.email,
         form.password
       );
 
-      // Set display name
-      await updateProfile(userCredential.user, {
-        displayName: form.name,
-      });
+      await updateProfile(userCredential.user, { displayName: form.name });
 
-      navigate("/dashboard"); // ✅ redirect after signup
+      // ✅ Store Firebase ID token in localStorage
+      const token = await userCredential.user.getIdToken();
+      localStorage.setItem("fbToken", token);
+
+      navigate("/dashboard");
     } catch (err) {
       setError(err.message);
     }
