@@ -1,137 +1,185 @@
-import React, { useState } from "react";
-import { Upload, X } from "lucide-react";
-import { toast } from "react-toastify";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "../firebase"; // import firebase storage
+import React, { useState, useEffect } from "react";
+import {
+  storage,
+  db,
+  logActivity,
+  shareFileWithEmail,
+  updatePermissions,
+  createFolder,
+  renameItem,
+  deleteItem,
+  moveItem,
+} from "../firebase";
+import {
+  ref,
+  uploadBytesResumable,
+  getDownloadURL,
+  deleteObject,
+} from "firebase/storage";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  updateDoc,
+  doc,
+  serverTimestamp,
+  query,
+  where,
+} from "firebase/firestore";
+import FileList from "./FileList";
 
-const FileUpload = ({ onClose }) => {
-  const [dragActive, setDragActive] = useState(false);
+const FileUpload = ({ user }) => {
+  const [file, setFile] = useState(null);
+  const [progress, setProgress] = useState(0);
   const [files, setFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
+  const [folders, setFolders] = useState([]);
+  const [currentFolder, setCurrentFolder] = useState("root");
+  const [breadcrumbs, setBreadcrumbs] = useState([{ id: "root", name: "My Drive" }]);
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("date");
+  const [filterBy, setFilterBy] = useState("all");
+  const [showTrash, setShowTrash] = useState(false);
 
-  const handleFiles = (selectedFiles) => {
-    const fileList = Array.from(selectedFiles);
-    setFiles(fileList);
+  // ✅ Fetch files + folders for current folder
+  const fetchFilesAndFolders = async () => {
+    const q = query(collection(db, "files"), where("deleted", "==", false));
+    const snapshot = await getDocs(q);
+    const items = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    }));
+
+    setFiles(items.filter((i) => i.type !== "folder"));
+    setFolders(items.filter((i) => i.type === "folder"));
   };
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFiles(e.dataTransfer.files);
-    }
-  };
+  useEffect(() => {
+    fetchFilesAndFolders();
+  }, []);
 
-  const handleUpload = async () => {
-    if (files.length === 0) {
-      toast.error("Please select a file to upload");
-      return;
-    }
-    setUploading(true);
+  // ✅ Upload file + log activity
+  const handleUpload = () => {
+    if (!file || !user) return;
 
-    try {
-      for (let file of files) {
-        const fileRef = ref(storage, `uploads/${file.name}`);
-        await uploadBytes(fileRef, file);
-        const downloadURL = await getDownloadURL(fileRef);
-        console.log("Uploaded file URL:", downloadURL);
+    const storageRef = ref(storage, `uploads/${currentFolder}/${file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        const prog = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+        setProgress(prog);
+      },
+      (error) => console.error(error),
+      async () => {
+        const url = await getDownloadURL(uploadTask.snapshot.ref);
+
+        const docRef = await addDoc(collection(db, "files"), {
+          name: file.name,
+          url,
+          size: file.size,
+          type: file.type,
+          parentId: currentFolder,
+          createdAt: serverTimestamp(),
+          trashed: false,
+          deleted: false,
+          sharedWith: [],
+          permissions: { [user.uid]: "owner" }, // default owner
+        });
+
+        await logActivity(user.uid, "upload_file", { fileId: docRef.id, name: file.name });
+
+        setFile(null);
+        setProgress(0);
+        fetchFilesAndFolders();
       }
-
-      toast.success("Files uploaded successfully!");
-      setFiles([]);
-      onClose(); // Close modal after success
-    } catch (err) {
-      console.error("Upload failed:", err);
-      toast.error("Upload failed. Try again.");
-    } finally {
-      setUploading(false);
-    }
+    );
   };
+
+  // ✅ Create folder
+  const handleCreateFolder = async () => {
+    const name = prompt("Enter folder name:");
+    if (!name) return;
+    await createFolder(name, currentFolder, user.uid);
+    await logActivity(user.uid, "create_folder", { name });
+    fetchFilesAndFolders();
+  };
+
+  // ✅ Share file by email
+  const handleShare = async (file) => {
+    const email = prompt("Enter email to share with:");
+    if (!email) return;
+    await shareFileWithEmail(file.id, email, user.uid);
+    await logActivity(user.uid, "share_file", { fileId: file.id, email });
+    fetchFilesAndFolders();
+    alert(`File shared with ${email}`);
+  };
+
+  // ✅ Change permissions
+  const handlePermissions = async (file) => {
+    const role = prompt("Enter role (viewer/editor):", "viewer");
+    if (!role) return;
+    const newPermissions = { ...file.permissions, [user.uid]: role };
+    await updatePermissions(file.id, newPermissions, user.uid);
+    await logActivity(user.uid, "update_permissions", { fileId: file.id, role });
+    fetchFilesAndFolders();
+  };
+
+  // ✅ Apply search + filter + sort
+  const visibleFiles = files
+    .filter(
+      (f) =>
+        !f.deleted &&
+        f.parentId === currentFolder &&
+        (showTrash ? f.trashed : !f.trashed) &&
+        f.name.toLowerCase().includes(search.toLowerCase()) &&
+        (filterBy === "all" || f.type.includes(filterBy))
+    )
+    .sort((a, b) => {
+      if (sortBy === "name") return a.name.localeCompare(b.name);
+      if (sortBy === "size") return a.size - b.size;
+      return b.createdAt?.seconds - a.createdAt?.seconds;
+    });
+
+  const visibleFolders = folders.filter(
+    (f) =>
+      !f.deleted &&
+      f.parentId === currentFolder &&
+      (showTrash ? f.trashed : !f.trashed)
+  );
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
-      <div className="bg-white rounded-2xl shadow-lg w-[500px] p-6 relative">
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 p-1 rounded-full hover:bg-gray-200 transition"
-        >
-          <X className="w-5 h-5 text-gray-600" />
+    <div className="p-6">
+      {/* Upload + Folder Creation */}
+      <div className="border-2 border-dashed p-6 rounded-lg text-center bg-gray-50">
+        <input type="file" onChange={(e) => setFile(e.target.files[0])} className="mb-4" />
+        <button onClick={handleUpload} className="bg-blue-600 text-white px-4 py-2 rounded-lg mr-3">
+          Upload
         </button>
-
-        <h2 className="text-xl font-semibold mb-4">Upload Files</h2>
-
-        {/* Drag & Drop Zone */}
-        <div
-          className={`border-2 border-dashed rounded-xl p-8 text-center transition 
-            ${dragActive ? "border-blue-500 bg-blue-50" : "border-gray-300"}
-          `}
-          onDragEnter={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setDragActive(true);
-          }}
-          onDragLeave={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setDragActive(false);
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onDrop={handleDrop}
-        >
-          <Upload className="mx-auto h-10 w-10 text-gray-500 mb-2" />
-          <p className="text-gray-600">Drag & drop your files here</p>
-          <p className="text-gray-500 text-sm">or</p>
-          <label className="mt-2 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700 transition">
-            Browse
-            <input
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => handleFiles(e.target.files)}
-            />
-          </label>
-        </div>
-
-        {/* Selected Files */}
-        {files.length > 0 && (
-          <ul className="mt-4 space-y-2 max-h-40 overflow-y-auto">
-            {files.map((file, idx) => (
-              <li
-                key={idx}
-                className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded-lg text-sm"
-              >
-                <span>{file.name}</span>
-                <span className="text-gray-500 text-xs">
-                  {(file.size / 1024).toFixed(1)} KB
-                </span>
-              </li>
-            ))}
-          </ul>
+        <button onClick={handleCreateFolder} className="bg-green-600 text-white px-4 py-2 rounded-lg">
+          + New Folder
+        </button>
+        {progress > 0 && (
+          <div className="mt-3">
+            <progress value={progress} max="100" className="w-full"></progress>
+          </div>
         )}
-
-        {/* Actions */}
-        <div className="flex justify-end gap-3 mt-6">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition"
-            disabled={uploading}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleUpload}
-            disabled={uploading}
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition disabled:opacity-50"
-          >
-            {uploading ? "Uploading..." : "Upload"}
-          </button>
-        </div>
       </div>
+
+      {/* 🔹 Pass sharing & permissions handlers into FileList */}
+      <FileList
+        files={visibleFiles}
+        folders={visibleFolders}
+        setCurrentFolder={setCurrentFolder}
+        breadcrumbs={breadcrumbs}
+        setBreadcrumbs={setBreadcrumbs}
+        moveItem={moveItem}
+        renameItem={renameItem}
+        deleteItem={deleteItem}
+        onShare={handleShare}
+        onPermissions={handlePermissions}
+        showTrash={showTrash}
+      />
     </div>
   );
 };

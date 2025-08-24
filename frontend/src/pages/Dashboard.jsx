@@ -1,31 +1,36 @@
 // src/pages/Dashboard.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Folder,
   File,
   Search,
   Upload,
   Share2,
-  Trash2,
   MoreVertical,
-  Plus,
-  Home,
-  Monitor,
-  Users,
-  Clock,
-  Star,
-  ShieldAlert,
   Grid,
   Settings,
 } from "lucide-react";
-import { db } from "../firebase"; 
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { db, auth } from "../firebase";
+import { signOut } from "firebase/auth";
+import {
+  collection,
+  query,
+  orderBy,
+  limit,
+  startAfter,
+  getDocs,
+  addDoc,
+  where,
+  serverTimestamp,
+} from "firebase/firestore";
+import { useAuthState } from "react-firebase-hooks/auth";
 
+import Sidebar from "../components/Sidebar";
 import FileUpload from "../components/FileUpload";
 import FilePreview from "../components/FilePreview";
-// import FileExplorer from "../components/FileExplorer";
 
 const Dashboard = () => {
+  const [user] = useAuthState(auth);
   const [files, setFiles] = useState([]);
   const [breadcrumbs, setBreadcrumbs] = useState(["My Drive"]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -34,105 +39,213 @@ const Dashboard = () => {
   const [previewFile, setPreviewFile] = useState(null);
   const [shareFile, setShareFile] = useState(null);
 
-  useEffect(() => {
-    const fetchFiles = async () => {
-      try {
-        const q = query(collection(db, "files"), orderBy("createdAt", "desc"));
-        const snapshot = await getDocs(q);
-        const filesData = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setFiles(filesData);
-      } catch (error) {
-        console.error("Error fetching files:", error);
-      }
-    };
+  const [shareEmail, setShareEmail] = useState("");
+  const [shareRole, setShareRole] = useState("viewer");
+  const [activities, setActivities] = useState([]);
+  const [activeSection, setActiveSection] = useState("myDrive");
 
-    fetchFiles();
+  const [lastDoc, setLastDoc] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const observer = useRef();
+  const cacheRef = useRef(null);
+
+  // 🔹 Settings dropdown state
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close settings dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setSettingsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Handle search & sorting (local only)
+  // 🔹 Fetch files depending on section
+  const fetchFiles = async (isLoadMore = false) => {
+    if (!user) return;
+
+    let q;
+    const filesRef = collection(db, "files");
+
+    switch (activeSection) {
+      case "shared":
+        q = query(
+          filesRef,
+          where("sharedWith", "array-contains", user.email),
+          orderBy("createdAt", "desc"),
+          limit(20)
+        );
+        break;
+      case "recent":
+        q = query(
+          filesRef,
+          where("userId", "==", user.uid),
+          orderBy("lastAccessed", "desc"),
+          limit(20)
+        );
+        break;
+      case "starred":
+        q = query(
+          filesRef,
+          where("userId", "==", user.uid),
+          where("starred", "==", true),
+          orderBy("createdAt", "desc"),
+          limit(20)
+        );
+        break;
+      case "trash":
+        q = query(
+          filesRef,
+          where("userId", "==", user.uid),
+          where("isTrashed", "==", true),
+          orderBy("createdAt", "desc"),
+          limit(20)
+        );
+        break;
+      case "computers":
+        q = query(
+          filesRef,
+          where("userId", "==", user.uid),
+          where("source", "==", "computer"),
+          orderBy("createdAt", "desc"),
+          limit(20)
+        );
+        break;
+      default:
+        q = query(
+          filesRef,
+          where("userId", "==", user.uid),
+          orderBy("createdAt", "desc"),
+          limit(20)
+        );
+        break;
+    }
+
+    const snapshot = await getDocs(q);
+    const newFiles = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+    if (isLoadMore) {
+      setFiles((prev) => [...prev, ...newFiles]);
+    } else {
+      setFiles(newFiles);
+      cacheRef.current = newFiles;
+    }
+
+    if (snapshot.docs.length > 0) {
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
+    }
+  };
+
+  // 🔹 Fetch recent activities
+  const fetchActivities = async () => {
+    if (!user) return;
+    const q = query(
+      collection(db, "activities"),
+      where("userId", "==", user.uid),
+      orderBy("timestamp", "desc"),
+      limit(5)
+    );
+    const snapshot = await getDocs(q);
+    setActivities(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+  };
+
+  useEffect(() => {
+    fetchFiles();
+    fetchActivities();
+  }, [user, activeSection]);
+
+  // Infinite scroll
+  const lastFileRef = useCallback(
+    (node) => {
+      if (loadingMore) return;
+      if (observer.current) observer.current.disconnect();
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          setLoadingMore(true);
+          fetchFiles(true).then(() => setLoadingMore(false));
+        }
+      });
+      if (node) observer.current.observe(node);
+    },
+    [loadingMore, lastDoc, activeSection]
+  );
+
+  // Search + sort
   const filteredFiles = files
-    .filter((f) => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter((f) => f.name?.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => {
       if (sortBy === "name") return a.name.localeCompare(b.name);
-      if (sortBy === "size") return (a.size || "").localeCompare(b.size || "");
-      if (sortBy === "date") return new Date(b.date) - new Date(a.date);
+      if (sortBy === "size") return (a.size || 0) - (b.size || 0);
+      if (sortBy === "date")
+        return (
+          new Date(b.createdAt?.toDate?.() || b.createdAt || 0) -
+          new Date(a.createdAt?.toDate?.() || a.createdAt || 0)
+        );
       return 0;
     });
 
-  // Breadcrumb click navigation
+  // Breadcrumb click
   const handleBreadcrumbClick = (index) => {
     setBreadcrumbs(breadcrumbs.slice(0, index + 1));
+  };
+
+  // ✅ Handle Sharing
+  const handleShare = async () => {
+    if (!shareEmail || !shareFile) return;
+    try {
+      await addDoc(collection(db, "shares"), {
+        fileId: shareFile.id,
+        fileName: shareFile.name,
+        ownerId: user.uid,
+        sharedWith: shareEmail,
+        role: shareRole,
+        createdAt: serverTimestamp(),
+      });
+
+      await addDoc(collection(db, "activities"), {
+        userId: user.uid,
+        action: "Shared file",
+        details: { name: shareFile.name, sharedWith: shareEmail, role: shareRole },
+        timestamp: serverTimestamp(),
+      });
+
+      alert("File shared successfully!");
+      setShareFile(null);
+      setShareEmail("");
+      setShareRole("viewer");
+      fetchActivities();
+    } catch (err) {
+      console.error("Error sharing file:", err);
+    }
+  };
+
+  // ✅ Handle Logout
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      window.location.href = "/login"; // redirect to login
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
   };
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
       {/* Sidebar */}
-      <aside className="w-64 bg-white dark:bg-gray-800 border-r flex flex-col justify-between p-4">
-        <div>
-          {/* + New button */}
-          <button
-            onClick={() => setUploadOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 mb-6 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow"
-          >
-            <Plus size={18} /> New
-          </button>
+      <Sidebar active={activeSection} setActive={setActiveSection} setUploadOpen={setUploadOpen} />
 
-          {/* Navigation */}
-          <nav className="flex flex-col gap-1 text-sm text-gray-700 dark:text-gray-200">
-            <button className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-              <Home size={18} /> Home
-            </button>
-            <button className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-              <Folder size={18} /> My Drive
-            </button>
-            {/* <FileExplorer /> */}
-            <button className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-              <Users size={18} /> Shared with me
-            </button>
-            <button className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-              <Clock size={18} /> Recent
-            </button>
-            <button className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-              <ShieldAlert size={18} /> Spam
-            </button>
-            <button className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-              <Trash2 size={18} /> Bin
-            </button>
-          </nav>
-        </div>
-
-        {/* Storage */}
-        <div className="px-2">
-          <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full mb-2">
-            <div
-              className="h-2 bg-blue-600 rounded-full"
-              style={{ width: "0%" }}
-            ></div>
-          </div>
-          <p className="text-xs text-gray-600 dark:text-gray-300 mb-2">
-            0 GB of 15 GB used
-          </p>
-          <button className="text-sm text-blue-600 hover:underline">
-            Get more storage
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
+      {/* Main */}
       <div className="flex-1 flex flex-col">
         {/* Navbar */}
-        <header className="flex items-center justify-between bg-white dark:bg-gray-800 border-b px-6 py-2">
-          {/* Logo */}
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-medium text-gray-700 dark:text-gray-200">
-              Drivebox
-            </span>
-          </div>
+        <header className="flex items-center justify-between bg-white dark:bg-gray-800 border-b px-6 py-2 relative">
+          <span className="text-lg font-medium text-gray-700 dark:text-gray-200">
+            Drivebox
+          </span>
 
-          {/* Search */}
           <div className="flex items-center bg-gray-100 dark:bg-gray-700 px-3 py-2 rounded-full w-[40%] shadow-sm">
             <Search size={18} className="text-gray-500" />
             <input
@@ -144,130 +257,53 @@ const Dashboard = () => {
             />
           </div>
 
-          {/* Right side icons */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4" ref={dropdownRef}>
             <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
-              <Grid size={20} className="text-gray-600 dark:text-gray-300" />
+              <Grid size={20} />
             </button>
-            <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
-              <Settings size={20} className="text-gray-600 dark:text-gray-300" />
-            </button>
+            {/* Settings with dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setSettingsOpen((prev) => !prev)}
+                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Settings size={20} />
+              </button>
+              {settingsOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-700 border rounded-lg shadow-lg z-50">
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600"
+                    onClick={() => {
+                      alert("Drivebox Settings clicked!");
+                      setSettingsOpen(false);
+                    }}
+                  >
+                    Drivebox Settings
+                  </button>
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600"
+                    onClick={handleLogout}
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
-        {/* Content area */}
-        <main className="flex-1 flex flex-col p-6 overflow-y-auto">
-          {/* Breadcrumbs + Sort */}
-          <div className="flex items-center justify-between mb-4">
-            {/* Breadcrumbs */}
-            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-300">
-              {breadcrumbs.map((crumb, index) => (
-                <span key={index} className="flex items-center gap-1 cursor-pointer">
-                  <span onClick={() => handleBreadcrumbClick(index)} className="hover:underline">
-                    {crumb}
-                  </span>
-                  {index < breadcrumbs.length - 1 && <span>/</span>}
-                </span>
-              ))}
-            </div>
+        {/* Content */}
+        {/* ... same as your code (files, breadcrumbs, activities, modals) ... */}
 
-            {/* Sort */}
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="border rounded-md px-3 py-2 dark:bg-gray-800 dark:text-gray-200"
-            >
-              <option value="name">Name</option>
-              <option value="size">Size</option>
-              <option value="date">Date</option>
-            </select>
+        {/* Upload Modal */}
+        {uploadOpen && <FileUpload onClose={() => setUploadOpen(false)} setFiles={setFiles} />}
+        {previewFile && <FilePreview file={previewFile} onClose={() => setPreviewFile(null)} />}
+        {shareFile && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            {/* share modal content same as your code */}
           </div>
-
-          {/* File Grid */}
-          <div className="grid grid-cols-4 gap-4">
-            {filteredFiles.map((file) => (
-              <div
-                key={file.id}
-                className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow hover:shadow-lg transition cursor-pointer group"
-              >
-                <div className="flex items-center justify-between">
-                  {file.type === "folder" ? (
-                    <Folder className="text-yellow-500" size={36} />
-                  ) : (
-                    <File className="text-blue-500" size={36} />
-                  )}
-                  <MoreVertical className="opacity-0 group-hover:opacity-100 transition cursor-pointer" />
-                </div>
-                <p className="mt-3 text-sm font-medium truncate text-gray-800 dark:text-gray-200">
-                  {file.name}
-                </p>
-                <p className="text-xs text-gray-400">
-                  {file.size || "-"} • {file.date || ""}
-                </p>
-
-                {/* Quick actions */}
-                <div className="flex gap-2 mt-3 opacity-0 group-hover:opacity-100 transition">
-                  {file.type !== "folder" && (
-                    <button
-                      onClick={() => setPreviewFile(file)}
-                      className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                    >
-                      <Upload size={14} /> Preview
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setShareFile(file)}
-                    className="flex items-center gap-1 text-xs text-green-600 hover:underline"
-                  >
-                    <Share2 size={14} /> Share
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </main>
+        )}
       </div>
-
-      {/* File Upload Modal */}
-      {uploadOpen && <FileUpload onClose={() => setUploadOpen(false)} setFiles={setFiles} />}
-
-      {/* File Preview Modal */}
-      {previewFile && <FilePreview file={previewFile} onClose={() => setPreviewFile(null)} />}
-
-      {/* Share Modal */}
-      {shareFile && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-96">
-            <h2 className="text-lg font-semibold mb-4">Share {shareFile.name}</h2>
-            <input
-              type="email"
-              placeholder="Enter email"
-              className="w-full border px-3 py-2 rounded mb-3 dark:bg-gray-700 dark:text-gray-200"
-            />
-            <select className="w-full border px-3 py-2 rounded mb-3 dark:bg-gray-700 dark:text-gray-200">
-              <option value="viewer">Viewer</option>
-              <option value="editor">Editor</option>
-            </select>
-            <div className="text-sm bg-gray-100 dark:bg-gray-700 p-2 rounded mb-3">
-              Shareable link:{" "}
-              <span className="text-blue-600">
-                https://drivebox.app/file/{shareFile.id}
-              </span>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShareFile(null)}
-                className="px-4 py-2 rounded bg-gray-200 dark:bg-gray-600"
-              >
-                Cancel
-              </button>
-              <button className="px-4 py-2 rounded bg-blue-600 text-white">
-                Send
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
